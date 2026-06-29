@@ -19,6 +19,7 @@ export default function PlexPanel({ currentUrl, pageMeta, onClose }) {
     setObserveResult(null);
   }, [currentUrl]);
 
+  // Ask Plex — vision path (OG image) via /api/see → /api/observe
   const askPlex = async () => {
     if (!currentUrl) return;
     setThinking(true); setErr(null); setResponse(null);
@@ -27,10 +28,13 @@ export default function PlexPanel({ currentUrl, pageMeta, onClose }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          url: currentUrl,
+          title: pageMeta?.title || null,
           imageUrl: pageMeta?.image || null,
-          pageUrl: currentUrl,
-          pageTitle: pageMeta?.title || null,
+          pageText: pageMeta?.description || null,
           prompt: prompt.trim() || null,
+          source: 'plex-browser',
+          sessionId: 'joe',
         }),
       });
       const data = await res.json();
@@ -40,22 +44,21 @@ export default function PlexPanel({ currentUrl, pageMeta, onClose }) {
     finally { setThinking(false); }
   };
 
-  // Plex Observe — mirrors bookmarklet logic, calls plex-sable /api/observe
+  // Plex Observe — text/URL context path, also via /api/see → /api/observe
   const observePage = async () => {
     if (!currentUrl) return;
     setObserving(true); setObserveResult(null);
     try {
-      const payload = {
-        url: currentUrl,
-        title: pageMeta?.title || '',
-        pageText: pageMeta?.description || '',
-        source: 'plex-browser',
-        sessionId: 'joe',
-      };
-      const res = await fetch('https://plex-sable.vercel.app/api/observe', {
+      const res = await fetch('/api/see', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          url: currentUrl,
+          title: pageMeta?.title || '',
+          pageText: pageMeta?.description || '',
+          source: 'plex-browser',
+          sessionId: 'joe',
+        }),
       });
       const data = await res.json();
       if (data.response) setObserveResult(data.response);
@@ -112,13 +115,12 @@ export default function PlexPanel({ currentUrl, pageMeta, onClose }) {
           }
         </button>
 
-        {/* Plex Observe — native bookmarklet equivalent */}
         <button onClick={observePage} disabled={observing || !currentUrl}
           className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/60 text-violet-400 text-xs font-medium rounded transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {observing
             ? <><svg className="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Observing…</>
-            : <><i className="fas fa-satellite-dish text-xs" />Plex Observe</>
+            : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="2"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Plex Observe</>
           }
         </button>
         {observeResult && (

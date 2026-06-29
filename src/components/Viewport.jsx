@@ -13,7 +13,7 @@ export default function Viewport({ iframeRef, iframeSrc, error, loading, onLoad,
           ref={iframeRef} src={iframeSrc}
           className="flex-1 w-full border-0 bg-white"
           title="plex-browser viewport"
-          sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+          sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
           onLoad={onLoad} onError={onError}
         />
       )}
