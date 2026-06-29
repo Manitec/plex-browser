@@ -33,9 +33,11 @@ export default function Toolbar({
             value={searchEngine} onChange={e => setSearchEngine(e.target.value)}
             className="text-xs border border-gray-700 rounded px-1.5 py-1 bg-gray-800 text-gray-300 focus:outline-none focus:border-emerald-500"
           >
+            <option value="plex">✨ Plex</option>
+            <option value="ddg">DDG (native)</option>
             <option value="google">Google</option>
             <option value="bing">Bing</option>
-            <option value="duckduckgo">DDG</option>
+            <option value="duckduckgo">DDG (proxied)</option>
             <option value="perplexity">Perplexity</option>
             <option value="brave">Brave</option>
           </select>
