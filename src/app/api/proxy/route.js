@@ -7,13 +7,51 @@ const HEADERS = {
   'Connection': 'keep-alive',
 };
 
+// Injected into every proxied HTML page.
+// Intercepts clicks before navigation, posts the real destination URL to the parent.
+const NAV_INTERCEPTOR = `
+<script>
+(function() {
+  function resolveHref(el) {
+    var a = el.closest('a');
+    if (!a) return null;
+    var href = a.getAttribute('href');
+    if (!href || href.startsWith('javascript:') || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return null;
+    try { return new URL(href, location.href).href; } catch { return null; }
+  }
+  document.addEventListener('click', function(e) {
+    var url = resolveHref(e.target);
+    if (!url) return;
+    // Don't intercept downloads
+    var a = e.target.closest('a');
+    if (a && a.hasAttribute('download')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.parent.postMessage({ type: 'PLEX_NAVIGATE', url: url }, '*');
+  }, true);
+  // Also report when the page itself finishes loading so Plex knows the real URL
+  window.parent.postMessage({ type: 'PLEX_LOADED', url: location.href }, '*');
+})();
+<\/script>
+`;
+
 function resolveUrl(raw, base) {
   if (!raw || raw.startsWith('data:') || raw.startsWith('blob:') || raw.startsWith('javascript:')) return null;
   try { return new URL(raw, base).href; } catch { return null; }
 }
 
 function rewriteHtml(html, pageUrl) {
-  html = html.replace(/(<[^>]+?[\s])(src|href|action)=("([^"]*)"|'([^']*)')/gi, (match, pre, attr, _q, dq, sq) => {
+  // Rewrite src/href/action attributes for assets (images, css, scripts)
+  // but NOT <a href> — those are handled by the click interceptor
+  html = html.replace(/(<(?:img|script|link|source|video|audio|track|embed|object|input)[^>]+?[\s])(src|href|action)=("([^"]*)"|'([^']*)')/gi, (match, pre, attr, _q, dq, sq) => {
+    const raw = dq ?? sq;
+    const quote = dq !== undefined ? '"' : "'";
+    const resolved = resolveUrl(raw, pageUrl);
+    if (!resolved || resolved.includes('/api/proxy')) return match;
+    return `${pre}${attr}=${quote}/api/proxy?url=${encodeURIComponent(resolved)}${quote}`;
+  });
+  // Rewrite form actions
+  html = html.replace(/(<form[^>]+?[\s])(action)=("([^"]*)"|'([^']*)')/gi, (match, pre, attr, _q, dq, sq) => {
     const raw = dq ?? sq;
     const quote = dq !== undefined ? '"' : "'";
     const resolved = resolveUrl(raw, pageUrl);
@@ -38,7 +76,14 @@ function rewriteHtml(html, pageUrl) {
     return `url("/api/proxy?url=${encodeURIComponent(resolved)}")`;
   });
   html = html.replace(/<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, '');
-  if (html.includes('<head>')) html = html.replace('<head>', `<head><base href="${pageUrl}">`);
+  // Inject interceptor right after <head> (or prepend if no <head>)
+  if (html.includes('<head>')) {
+    html = html.replace('<head>', `<head>${NAV_INTERCEPTOR}`);
+  } else if (html.includes('<body>')) {
+    html = html.replace('<body>', `<body>${NAV_INTERCEPTOR}`);
+  } else {
+    html = NAV_INTERCEPTOR + html;
+  }
   return html;
 }
 
@@ -61,7 +106,12 @@ export async function GET(request) {
       const rewritten = rewriteHtml(html, finalUrl);
       return new NextResponse(rewritten, {
         status: res.status,
-        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=60', 'X-Proxy-Final-Url': finalUrl },
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=60',
+          'X-Proxy-Final-Url': finalUrl,
+        },
       });
     }
     const body = await res.arrayBuffer();

@@ -12,7 +12,6 @@ const SEARCH_ENGINES = {
   duckduckgo: (q) => `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
   perplexity: (q) => `https://www.perplexity.ai/search?q=${encodeURIComponent(q)}`,
   brave:      (q) => `https://search.brave.com/search?q=${encodeURIComponent(q)}`,
-  // plex + ddg are handled natively — no external URL needed
 };
 
 const NATIVE_ENGINES = new Set(['plex', 'ddg']);
@@ -35,12 +34,33 @@ export default function Browser() {
 
   // Native search state
   const [searchQuery, setSearchQuery]     = React.useState('');
-  const [searchResults, setSearchResults] = React.useState(null); // null = not searching
+  const [searchResults, setSearchResults] = React.useState(null);
   const [searchLoading, setSearchLoading] = React.useState(false);
   const [searchError, setSearchError]     = React.useState(null);
   const [searchSource, setSearchSource]   = React.useState('ddg');
 
   const iframeRef = React.useRef(null);
+
+  // Listen for postMessages from the proxied iframe
+  React.useEffect(() => {
+    function onMessage(e) {
+      if (!e.data || typeof e.data !== 'object') return;
+      if (e.data.type === 'PLEX_NAVIGATE') {
+        navigate(e.data.url);
+      }
+      if (e.data.type === 'PLEX_LOADED') {
+        // Update address bar + Plex context to reflect the real current page
+        const real = e.data.url;
+        if (real && !real.includes('/api/proxy')) {
+          setCurrentUrl(real);
+          setInputValue(real);
+        }
+      }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     if (!currentUrl) { setPageMeta(null); return; }
@@ -80,7 +100,6 @@ export default function Browser() {
 
   const navigate = React.useCallback((targetUrl) => {
     if (!targetUrl) return;
-    // Clear any active search results when navigating to a real page
     setSearchResults(null);
     setSearchQuery('');
     let fullUrl = targetUrl.trim();
